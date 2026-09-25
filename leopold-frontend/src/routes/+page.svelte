@@ -4,8 +4,6 @@
   import { goto } from '$app/navigation';
   import { observationsStore } from '$lib/stores';
   import { Plus, Map, List, Search, TrendingUp, Camera, Mic, MapPin, Calendar, Users } from 'lucide-svelte';
-  
-  // Import types
   import type { Observation, User, ViewMode, ObservationType } from '$lib/types';
   
   // Type definitions for this component
@@ -64,7 +62,7 @@
         region: 'Central Park, New York'
       },
       timestamp: new Date().toISOString(),
-      image_urls: ['https://example.com/robin1.jpg'],
+      images: ['https://example.com/robin1.jpg'],
       notes: 'Spotted feeding on the ground near the Bethesda Fountain',
       count: 2,
       confidence: 4,
@@ -88,7 +86,7 @@
         region: 'Washington Square Park, New York'
       },
       timestamp: new Date().toISOString(),
-      audio_url: 'https://example.com/cardinal.mp3',
+      audio_recording: { url: 'https://example.com/cardinal.mp3', duration: 12 },
       notes: 'Beautiful morning song from male cardinal',
       count: 1,
       confidence: 5,
@@ -110,8 +108,8 @@
         region: 'Manuel Antonio, Costa Rica'
       },
       timestamp: new Date().toISOString(),
-      image_urls: ['https://example.com/treefrog1.jpg', 'https://example.com/treefrog2.jpg'],
-      audio_url: 'https://example.com/treefrog.mp3',
+      images: ['https://example.com/treefrog1.jpg', 'https://example.com/treefrog2.jpg'],
+      audio_recording: { url: 'https://example.com/treefrog.mp3', duration: 15 },
       notes: 'Found during night survey near stream. Very active and vocal.',
       count: 3,
       confidence: 4,
@@ -166,7 +164,7 @@
   }
 
   // Filter handlers
-  function handleFilterChange(filterType: keyof ObservationFilters, value: any) {
+  function handleFilterChange(filterType: keyof ObservationFilters, value: unknown) {
     selectedFilters = { ...selectedFilters, [filterType]: value };
   }
 

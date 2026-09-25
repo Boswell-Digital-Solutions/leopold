@@ -1,24 +1,139 @@
+<!-- @component
+no description yet
+-->
+<script context="module" lang="ts">
+  import type {
+    Observation,
+    ObservationFilters,
+    ObservationType
+  } from '$lib/types';
+
+  export function filterObservations(
+    obs: Observation[],
+    filters: ObservationFilters = {},
+    layers: Record<ObservationType | 'verified', boolean>
+  ): Observation[] {
+    return obs.filter(observation => {
+      // Observation type layers
+      if (!layers[observation.observation_type]) {
+        return false;
+      }
+
+      // Unverified observations layer
+      if (!observation.is_verified && !layers.verified) {
+        return false;
+      }
+
+      // Species filter
+      if (filters.species && filters.species.length > 0) {
+        const names = [
+          observation.species_name,
+          observation.scientific_name,
+          ...(observation.common_names || [])
+        ]
+          .filter(Boolean)
+          .map(n => (n as string).toLowerCase());
+        const hasSpecies = filters.species
+          .map(s => s.toLowerCase())
+          .some(s => names.includes(s));
+        if (!hasSpecies) {
+          return false;
+        }
+      }
+
+      // Date range filter
+      if (filters.dateRange) {
+        const obsDate = new Date(observation.created_at);
+        if (
+          filters.dateRange.start &&
+          obsDate < new Date(filters.dateRange.start)
+        ) {
+          return false;
+        }
+        if (
+          filters.dateRange.end &&
+          obsDate > new Date(filters.dateRange.end)
+        ) {
+          return false;
+        }
+      }
+
+      // Observation type filter
+      if (
+        filters.observationType &&
+        filters.observationType !== 'all' &&
+        observation.observation_type !== filters.observationType
+      ) {
+        return false;
+      }
+
+      // User filter
+      if (filters.user && observation.user_id !== filters.user) {
+        return false;
+      }
+
+      // Tags filter
+      if (filters.tags && filters.tags.length > 0) {
+        const obsTags = observation.tags || [];
+        const hasAllTags = filters.tags.every(tag => obsTags.includes(tag));
+        if (!hasAllTags) {
+          return false;
+        }
+      }
+
+      // Verified filter from filters
+      if (
+        filters.verified !== undefined &&
+        (observation.is_verified ?? false) !== filters.verified
+      ) {
+        return false;
+      }
+
+      // Location filter (simple haversine)
+      if (filters.location && observation.location) {
+        const { latitude: lat1, longitude: lon1 } = observation.location;
+        const { latitude: lat2, longitude: lon2 } = filters.location.center;
+        const R = 6371; // km
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+        if (distance > filters.location.radius_km) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }
+</script>
+
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { browser } from '$app/environment';
   import { observationsStore, filtersStore, uiStore } from '$lib/stores';
   import { Play, Pause, Volume2, Camera, Mic, MapPin, Filter, Layers } from 'lucide-svelte';
-  import type { 
-    Observation, 
-    Location, 
-    MapBounds, 
+  import type {
+    Observation,
+    Location,
+    MapBounds,
     ObservationType,
     ClusterInfo
   } from '$lib/types';
 
   // Map library imports
-  let L: any;
-  let markerClusterGroup: any;
+  let L: unknown;
+  let markerClusterGroup: unknown;
 
   const dispatch = createEventDispatcher<{
     observationSelected: Observation;
     boundsChanged: MapBounds;
-    markerClicked: { observation: Observation; marker: any };
+    markerClicked: { observation: Observation; marker: unknown };
   }>();
 
   // Props
@@ -33,16 +148,18 @@
 
   // State
   let mapContainer: HTMLDivElement;
-  let map: any;
-  let markerCluster: any;
-  let markers = new Map<string, any>();
+  let map: unknown;
+  let markerCluster: unknown;
+  let markers = new Map<string, unknown>();
   let audioPlayer: HTMLAudioElement | null = null;
-  let currentlyPlaying: string | null = null;
   let isInitialized = false;
 
   // Filter state
-  let activeFilters = $filtersStore;
+  let activeFilters: ObservationFilters;
   let showFilterPanel = false;
+
+  // Keep active filters in sync with the store
+  $: activeFilters = $filtersStore;
   
   let layerControls: Record<ObservationType | 'verified', boolean> = {
     visual: true,
@@ -76,13 +193,13 @@
 
       try {
         await import('leaflet.markercluster');
-        markerClusterGroup = (L as any).markerClusterGroup;
+        markerClusterGroup = (L as Record<string, unknown>).markerClusterGroup;
       } catch (importError) {
         console.warn('leaflet.markercluster import failed:', importError);
         enableClustering = false;
       }
-      
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
+
+      delete (L.Icon.Default.prototype as Record<string, unknown>)._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
         iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
@@ -108,20 +225,6 @@
     }
     markers.clear();
   });
-
-  // FIXED: Add missing functions
-  function filterObservations(
-    obs: Observation[], 
-    filters: any, 
-    layers: Record<string, boolean>
-  ): Observation[] {
-    return obs.filter(observation => {
-      if (!layers[observation.observation_type] && !layers.verified) {
-        return false;
-      }
-      return true;
-    });
-  }
 
   async function initializeMap() {
     if (!L || !mapContainer) return;
@@ -251,14 +354,15 @@
     });
   }
 
-  function createClusterIcon(cluster: any): any {
-    const count = cluster.getChildCount();
+  function createClusterIcon(cluster: Record<string, unknown>): unknown {
+    const count = (cluster.getChildCount as () => number)();
     let size = 'small';
-    
+
     if (count >= 100) size = 'large';
     else if (count >= 10) size = 'medium';
 
-    return L.divIcon({
+    const leafletLib = L as Record<string, (options: Record<string, unknown>) => unknown>;
+    return leafletLib.divIcon({
       html: `<div class="cluster-marker cluster-${size}"><span>${count}</span></div>`,
       className: 'marker-cluster',
       iconSize: [40, 40]
